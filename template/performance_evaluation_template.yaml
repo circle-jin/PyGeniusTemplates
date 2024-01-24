@@ -1,0 +1,36 @@
+#######################################
+# Input data
+#######################################
+input_to_pre:
+  -
+    name: "camera_data"
+    format: "RGB"
+    order: "HWC"
+    shape: {{ input_shape }}
+    type: "fp16"
+
+input_to_body:
+{{ input_body }}
+
+
+#######################################
+# Preprocess
+#######################################
+preprocess:
+{{ input_preprocess }}
+
+
+#######################################
+# Output data
+#######################################
+output_from_body:
+{{ output_body }}
+
+output_from_post:
+{{ output_post }}
+
+#######################################
+# Postprocess
+#######################################
+postprocess:
+{{ output_postprocess }}
