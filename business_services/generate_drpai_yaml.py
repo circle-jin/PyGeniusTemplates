@@ -75,13 +75,43 @@ def validate_model_conversion(drpai_tool_path, drpai_model_name) -> bool:
         return False
 
 
+def quantize_with_renesas(
+    drpai_quantize_path: str,
+    input_model_path: str,
+    output_model_path: str,
+    calibrate_dataset: str,
+    norm_mean: str,
+    norm_std: str,
+    datareader_path: str,
+):
+    """onnx(fp32) -> onnx(int8) 변환"""
+
+    cmd = f"""
+    python3 -m drpai_quantizer.cli_interface \
+    --input_model_path {input_model_path} \
+    --output_model_path {output_model_path} \
+    --norm_mean {norm_mean} \
+    --norm_std {norm_std} \
+    --calibrate_method MinMax \
+    --calibrate_dataset {calibrate_dataset} \
+    --datareader_path {datareader_path}
+    """
+
+    print("Executing quantize command:", cmd)
+    try:
+        subprocess.run(cmd, cwd=drpai_quantize_path, shell=True, check=True, text=True)
+        print("Command executed successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error occurred: {e}")
+
+
 def convert_onnx_to_drpai(
     drpai_tool_path, drpai_model_name, onnx_path, yaml_path, s_addr="0x80000000"
 ) -> bool:
     """onnx -> drpai 변환"""
 
     cmd = f"cd {drpai_tool_path} && ./run_Translator_v2h.sh {drpai_model_name} --onnx {onnx_path} --prepost {yaml_path} --s_addr {s_addr}"
-    print("Executing command:", cmd)
+    print("Executing tranlator command:", cmd)
 
     try:
         subprocess.run(cmd, shell=True, check=True)
@@ -110,30 +140,67 @@ def print_conversion_results(convert_result_list):
 
 
 if __name__ == "__main__":
-    # run_Translator_v2h.sh 가 있는 TOOL 경로 셋팅
-    DRPAI_TOOL_PATH = os.getenv("DRPAI_TOOL_PATH")
+    # TOOL 경로 셋팅
+    DRPAI_QUANTIZE_PATH = os.getenv("DRPAI_QUANTIZE_PATH")
+    DRPAI_TRANSLATOR_PATH = os.getenv("DRPAI_TRANSLATOR_PATH")
 
-    # yaml 파일 경로 셋팅
+    # translator option
     yaml_file_path = "/home/PyGeniusTemplates/"
     yaml_file_name = "output_file.yaml"
     yaml_path = yaml_file_path + yaml_file_name
     s_addr = "0x80000000"
 
-    dir_path = "/home/PyGeniusTemplates/models"
-    file_names, file_paths = get_file_paths_and_names_in_dir(dir_path)
+    # quantize option
+    datareader_path = "/home/drp-ai_work/tutorials/Translate/nchw_datareader_yolox_s.py"
+    calibrate_dataset = "/home/drp-ai_work/tutorials/Translate/calibrate_sample"
+    calibrate_method = "MinMax"
+    norm_mean = "[0.0,0.0,0.0]"
+    norm_std = "[1.0,1.0,1.0]"
+
+    # yaml_path = "/home/PyGeniusTemplates/renesas_prepost_renesas_YoloX_S.yaml"
+    # yaml_path = "/home/PyGeniusTemplates/renesas_prepost_nota_YoloX_S.yaml"
+    # yaml_path = "/home/PyGeniusTemplates/renesas_prepost_nota_original_YoloX.yaml"
+    # yaml_path = "/home/PyGeniusTemplates/renesas_prepost_nota_ModelZOO_YoloX_S.yaml"
+    # yaml_path = "/home/PyGeniusTemplates/renesas_prepost_nota_JH_YoloX_S.yaml"
+    # yaml_path = "/home/PyGeniusTemplates/renesas_prepost_nota_Core_YoloX_S.yaml"
+    yaml_path = (
+        "/home/PyGeniusTemplates/renesas_prepost_wonjin_np_trainer_np_Core_YoloX_S.yaml"
+    )
+    print(
+        f"################ 현재 자동생성한 yaml이 아닌 임시로 Rensas와 똑같이 성능 측정 하기 위해 {yaml_path} 파일 쓰고 있음######### "
+    )
 
     convert_result_list = []
+
+    dir_path = "/home/PyGeniusTemplates/models"
+    quantize_output_dir_path = "/home/PyGeniusTemplates/quantize_models/"
+    file_names, file_paths = get_file_paths_and_names_in_dir(dir_path)
 
     for model_name, model_path in zip(file_names, file_paths):
         generate_yaml_for_performance_evaluation(
             model_path, save_file_name=yaml_file_name
         )
 
+        model_name = model_name.replace(".onnx", "_INT8.onnx")
+        q_output_path = quantize_output_dir_path + model_name
+
+        # 르네사스 Quantize
+        quantize_with_renesas(
+            drpai_quantize_path=DRPAI_QUANTIZE_PATH,
+            input_model_path=str(model_path),
+            output_model_path=str(q_output_path),
+            calibrate_dataset=calibrate_dataset,
+            norm_mean=norm_mean,
+            norm_std=norm_std,
+            datareader_path=datareader_path,
+        )
+
+        # onnx(int8) -> drp-ai 변환
         model_name = model_name.replace(".onnx", "")
         convert_result = convert_onnx_to_drpai(
-            drpai_tool_path=DRPAI_TOOL_PATH,
+            drpai_tool_path=DRPAI_TRANSLATOR_PATH,
             drpai_model_name=model_name,
-            onnx_path=model_path,
+            onnx_path=q_output_path,
             yaml_path=yaml_path,
             s_addr=s_addr,
         )
